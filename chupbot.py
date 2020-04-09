@@ -128,30 +128,34 @@ def turn_word_to_color(word, cap=True):
         
     return dominant_color
     
-def generate_tweet():
+def generate_tweet(api):
     with open(get_script_path() + sep + 'words.pickle', 'rb') as f:
         im = Image.open(get_script_path() + sep + 'images' + sep + 'mayochup_edit.jpg')
         words = pickle.load(f)
         flavors = words[0]
         brands = words[1]
 
-        todays_flavor = sample(flavors, 1)[0]
+        todays_flavor = sample(flavors, 1)[0] 
         todays_brand = sample(brands, 1)[0]
         chup = turn_word_to_color(todays_flavor)
-        brand(im, todays_brand)
-        im = flavor(im, todays_flavor, chup)
-        im.save(get_script_path() + sep + 'images' + sep + 'tweetthis.jpg')
         with open(get_script_path() + sep + 'skeletons.json', 'r') as f2:
             statuses = json.load(f2)
             template = sample(statuses, 1)[0]
-            return template.format(todays_brand, todays_flavor)
+        if system() == 'Linux':
+            bot_api.send_direct_message(creds['owner'], 'new tweet incoming: {}-{}-{}'.format(todays_brand, todays_flavor, chup))
+
+        brand(im, todays_brand)
+        im = flavor(im, todays_flavor, chup)
+        im.save(get_script_path() + sep + 'images' + sep + 'tweetthis.jpg')
+        
+        return template.format(todays_brand, todays_flavor)
 
 
 def bot_loop(api, debug=False):
     tweet_hour = 9
     while True:
         if tweet_hour <= datetime.today().hour:
-            status = generate_tweet()
+            status = generate_tweet(api)
             if not debug:
                 api.update_with_media(get_script_path() + sep + 'images' + sep + 'tweetthis.jpg', status)
             else:
@@ -176,7 +180,7 @@ if __name__ == "__main__":
         bot_api.send_direct_message(creds['owner'], 'as of {}:{} chupbot is running on IP {}'.format(datetime.now().hour, datetime.now().minute, socket.gethostbyname(socket.gethostname())))
 
     try:
-        bot_loop(bot_api, debug=True) # set debug=True for testing
+        bot_loop(bot_api) # set debug=True for testing
     except KeyboardInterrupt:
         print('exited normally')
     except Exception as e:
