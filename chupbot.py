@@ -152,18 +152,15 @@ def generate_tweet(api):
 
 
 def bot_loop(api, debug=False):
-    tweet_hour = 9
+    tweet_hour = 8
     while True:
-        if tweet_hour <= datetime.today().hour:
+        if tweet_hour == datetime.today().hour:
             status = generate_tweet(api)
             if not debug:
                 api.update_with_media(get_script_path() + sep + 'images' + sep + 'tweetthis.jpg', status)
             else:
                 print(status)
-            if tweet_hour == 9:
-                tweet_hour = 15
-            else:
-                tweet_hour = 9
+            tweet_hour = (tweet_hour + 7) % 24
 
     sleep(240)
 
