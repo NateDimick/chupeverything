@@ -95,9 +95,9 @@ def flavor(image, text, color):
     return image
 
 def sauce(image, color):
-    image = replace_color3(image, [250, 188, 129], color, tolerance=25)
-    image = replace_color3(image, [228, 215, 183], color, tolerance=25)
-    image = replace_color3(image, [240, 235, 200], color, tolerance=20)
+    image = replace_color3(image, [245, 186, 126], color, tolerance=42.5)  # this is the most common color
+    #image = replace_color3(image, [228, 215, 183], color, tolerance=20)
+    #image = replace_color3(image, [240, 235, 200], color, tolerance=20)
 
     return image
 
@@ -130,7 +130,7 @@ def turn_word_to_color(word, cap=True):
     
 def generate_tweet(api):
     with open(get_script_path() + sep + 'words.pickle', 'rb') as f:
-        im = Image.open(get_script_path() + sep + 'images' + sep + 'mayochup_edit.jpg')
+        im = Image.open(get_script_path() + sep + 'images' + sep + 'mayochup_uncompressed.png')
         words = pickle.load(f)
         flavors = words[0]
         brands = words[1]
@@ -143,10 +143,12 @@ def generate_tweet(api):
             template = sample(statuses, 1)[0]
         if system() == 'Linux':
             bot_api.send_direct_message(creds['owner'], 'new tweet incoming: {}-{}-{}'.format(todays_brand, todays_flavor, chup))
+        else: 
+            print(chup, end=' ')
 
         brand(im, todays_brand)
         im = flavor(im, todays_flavor, chup)
-        im.save(get_script_path() + sep + 'images' + sep + 'tweetthis.jpg')
+        im.save(get_script_path() + sep + 'images' + sep + 'tweetthis.png')
         
         return template.format(todays_brand, todays_flavor)
 
@@ -154,10 +156,10 @@ def generate_tweet(api):
 def bot_loop(api, debug=False):
     tweet_hour = 8
     while True:
-        if tweet_hour == datetime.today().hour:
+        if tweet_hour == datetime.today().hour or debug:
             status = generate_tweet(api)
             if not debug:
-                api.update_with_media(get_script_path() + sep + 'images' + sep + 'tweetthis.jpg', status)
+                api.update_with_media(get_script_path() + sep + 'images' + sep + 'tweetthis.png', status)
             else:
                 print(status)
             tweet_hour = (tweet_hour + 7) % 24
