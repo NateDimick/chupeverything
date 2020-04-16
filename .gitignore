@@ -1,0 +1,8 @@
+
+*.jpg
+*.txt
+*.pyc
+tools/*
+good debug creations/*
+tokens.json
+images/tweetthis.png

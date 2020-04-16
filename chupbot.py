@@ -4,7 +4,7 @@ author: Nate Dimick
 """
 import tweepy as tp 
 import json
-from PIL import Image
+from PIL import Image, ImageDraw
 import numpy as np
 from colormath.color_diff import delta_e_cie2000
 from colormath.color_objects import LabColor, sRGBColor
@@ -43,37 +43,34 @@ def put_word_on_area(base_img, word, area, slope=0, text=[20,30], color=[0,0,0])
     for l in word: 
         char = raw_text.crop(font[l])
         char = char.resize([text[0], text[1]], resample=Image.BICUBIC)
-        char = replace_color3(char, [0,0,0], color, tolerance=255)
+        char = replace_color3(char, [0,0,0], color, tolerance=200)
         base_img.paste(char, [x, y - s])
         x += text[0] + 2
         s += slope
 
 def replace_color3(image, color, replacement, tolerance):
+    """
+    replaces all pixels that are within the tolerance of cie2000 color distance from the given color with the replacement color, altered to reflect the difference
+    """
     # make image a np array to easily edit it
     pic = np.array(image)
     # get the LabColor of the target color to replace
     lcolor = sRGBColor(color[0], color[1], color[2])
     lcolor = convert_color(lcolor, LabColor)
-    diff_store = {}
+    diff_store = {}  # store all color differences to that some claculations don't have to repeated. Dynamic programming FTW. TODO: store this to a file to make repeated operations faster. 
     for y in range(len(pic)):
-        for x in range(len(pic[0])):
+        for x in range(len(pic[0])):                          # iterate through all pixels in the image
             pixel = pic[y, x]
-            diff = diff_store.get(tuple(pixel), -1)
+            diff = diff_store.get(tuple(pixel), -1)           # get the difference. -1 if no difference exits yet. 
             if diff < 0:
-                diff = color_distance(lcolor, tuple(pixel))
+                diff = color_distance(lcolor, tuple(pixel))   # calculate the difference and store it. 
                 diff_store[tuple(pixel)] = diff
-            if diff < tolerance:
+            if diff < tolerance:                              # if the color difference/ distance is less than the given tolerance
                 err = []
                 for v in range(3):
-                    err.append(pixel[v] - color[v])
-                for i in range(3):
-                    if replacement[i] + err[i] > 255:
-                        pic[y,x,i] = 255
-                    elif replacement[i] + err[i] < 0:
-                        pic[y,x,i] = 0
-                    else: 
-                        pic[y,x,i] = replacement[i] + err[i]
-
+                    err.append(pixel[v] - color[v])           # calculate the error of the to be replaced pixel from the target color
+                bc = better_color(replacement, err, mode=4)   # get the "better color" in what i call value cap mode
+                pic[y, x] = np.array(bc)
     return Image.fromarray(pic)
 
 
@@ -86,6 +83,52 @@ def color_distance(c1, c2):
     de = delta_e_cie2000(color1, color2)
     return de
 
+def better_color(color, error, mode=1, debug=False):
+    """
+    chooses the better resulting color and error combination - to cap the sum of original and error at 0 and 255 or to allow overflow 
+    modes: 
+    1 = larger chroma value (default)
+    2 = least rgb error
+    3 = mod only (c + e) % 255
+    4 = cap only 
+    """
+    result = [c + e for c, e in zip(color, error)]
+    mod = [c % 255 for c in result]
+    cap = [c for c in result]
+    for i in range(len(cap)):
+        if cap[i] > 255:
+            cap[i] = 255
+        if cap[i] < 0:
+            cap[i] = 0
+    if mode == 1:
+        mod_chroma = max(mod) - min(mod)
+        cap_chroma = max(cap) - min(cap)
+        if mod_chroma > cap_chroma:
+            result = mod
+        else:
+            result = cap
+    elif mode == 2:
+        mod_err = sum(m - c for m, c in zip(mod, color))
+        cap_err = sum(a - c for a, c in zip(cap, color))
+        if mod_err < cap_err:
+            result = mod
+        else:
+            result = cap
+    elif mode == 3:
+        result = mod
+    elif mode == 4:
+        result = cap
+
+    if debug:
+        print("input {}, got mod{} and cap{}, chose {}".format(color, mod, cap, result))
+        vis = Image.new('RGB', [400, 400])
+        vd = ImageDraw.Draw(vis)
+        vd.rectangle([0, 0, 200, 400], fill=tuple(color))
+        vd.rectangle([200, 0, 400, 200], fill=tuple(mod))
+        vd.rectangle([200, 200, 400, 400], fill=tuple(cap))
+        vis.show()
+    return result
+
 def brand(image, text):
     put_word_on_area(image, text, [150, 200, 260, 230])
 
@@ -96,12 +139,12 @@ def flavor(image, text, color):
 
 def sauce(image, color):
     image = replace_color3(image, [245, 186, 126], color, tolerance=42.5)  # this is the most common color
-    #image = replace_color3(image, [228, 215, 183], color, tolerance=20)
-    #image = replace_color3(image, [240, 235, 200], color, tolerance=20)
-
     return image
 
 def turn_word_to_color(word, cap=True):
+    """
+    synthethize a color from a given word, based on synesthesia kinda. start with the color of the first letter, then accumulate error ofver the rest of the word to make the color unique, but not brown. 
+    """
     with open(get_script_path() + sep + 'synesthesia.json', 'r') as f:
         colors = json.load(f)
     wc = []
@@ -115,18 +158,8 @@ def turn_word_to_color(word, cap=True):
         for y in range(3):
             e = colors[l][y] - dominant_color[y]
             err[y] += e
-
-    for i in range(3):
-        dominant_color[i] += err[i]
-        if not cap:
-            dominant_color[i] = dominant_color[i] % 255
-        else:
-            if dominant_color[i] < 0:
-                dominant_color[i] = 0
-            elif dominant_color[i] > 255:
-                dominant_color[i] = 255
         
-    return dominant_color
+    return better_color(dominant_color, err)#, debug=True)
     
 def generate_tweet(api):
     with open(get_script_path() + sep + 'words.pickle', 'rb') as f:
@@ -138,7 +171,7 @@ def generate_tweet(api):
         todays_flavor = sample(flavors, 1)[0] 
         todays_brand = sample(brands, 1)[0]
         chup = turn_word_to_color(todays_flavor)
-        with open(get_script_path() + sep + 'skeletons.json', 'r') as f2:
+        with open(get_script_path() + sep + 'skeletons.json', 'r') as f2:  # get one tweet skeleton
             statuses = json.load(f2)
             template = sample(statuses, 1)[0]
         if system() == 'Linux':
@@ -146,9 +179,9 @@ def generate_tweet(api):
         else: 
             print(chup, end=' ')
 
-        brand(im, todays_brand)
-        im = flavor(im, todays_flavor, chup)
-        im.save(get_script_path() + sep + 'images' + sep + 'tweetthis.png')
+        brand(im, todays_brand)  # puts the "brand" name where it belongs
+        im = flavor(im, todays_flavor, chup)  # recolors the image and puts the "flavor" on the image
+        im.save(get_script_path() + sep + 'images' + sep + 'tweetthis.png')  # save the image for tweeting
         
         return template.format(todays_brand, todays_flavor)
 
