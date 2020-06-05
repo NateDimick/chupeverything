@@ -13,7 +13,7 @@ Future updates incoming when I feel like it. Ideas include:
 * better color replacement
 * collecting short trends for later use
 * more skeletons
-* mayocue, mayomust, and kranch added to the lineup
+* mayocue and kranch added to the lineup
 
 This project couldn't be done without:
 

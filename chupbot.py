@@ -12,7 +12,6 @@ from colormath.color_conversions import convert_color
 from os import sep
 from os.path import dirname, realpath
 import sys
-import pickle
 from random import sample
 from datetime import datetime, date, time
 from time import sleep
@@ -43,12 +42,12 @@ def put_word_on_area(base_img, word, area, slope=0, text=[20,30], color=[0,0,0])
     for l in word: 
         char = raw_text.crop(font[l])
         char = char.resize([text[0], text[1]], resample=Image.BICUBIC)
-        char = replace_color3(char, [0,0,0], color, tolerance=200)
+        char = replace_color3(char, [0,0,0], color, tolerance=200, mode='w')
         base_img.paste(char, [x, y - s])
         x += text[0] + 2
         s += slope
 
-def replace_color3(image, color, replacement, tolerance):
+def replace_color3(image, color, replacement, tolerance, mode):
     """
     replaces all pixels that are within the tolerance of cie2000 color distance from the given color with the replacement color, altered to reflect the difference
     """
@@ -57,20 +56,26 @@ def replace_color3(image, color, replacement, tolerance):
     # get the LabColor of the target color to replace
     lcolor = sRGBColor(color[0], color[1], color[2])
     lcolor = convert_color(lcolor, LabColor)
-    diff_store = {}  # store all color differences to that some claculations don't have to repeated. Dynamic programming FTW. TODO: store this to a file to make repeated operations faster. 
+    try:
+        with open(get_script_path() + sep + 'color_diffs.json', 'r') as f:
+            diff_store = json.load(f)
+    except:
+        diff_store = {}  # store all color differences to that some claculations don't have to repeated. Dynamic programming FTW. TODO: store this to a file to make repeated operations faster. 
     for y in range(len(pic)):
         for x in range(len(pic[0])):                          # iterate through all pixels in the image
             pixel = pic[y, x]
-            diff = diff_store.get(tuple(pixel), -1)           # get the difference. -1 if no difference exits yet. 
+            diff = diff_store.get(str(tuple(pixel)) + mode, -1)           # get the difference. -1 if no difference exits yet. 
             if diff < 0:
                 diff = color_distance(lcolor, tuple(pixel))   # calculate the difference and store it. 
-                diff_store[tuple(pixel)] = diff
+                diff_store[str(tuple(pixel)) + mode] = diff
             if diff < tolerance:                              # if the color difference/ distance is less than the given tolerance
                 err = []
                 for v in range(3):
                     err.append(pixel[v] - color[v])           # calculate the error of the to be replaced pixel from the target color
                 bc = better_color(replacement, err, mode=4)   # get the "better color" in what i call value cap mode
                 pic[y, x] = np.array(bc)
+    with open(get_script_path() + sep + 'color_diffs.json', 'w') as f:
+        json.dump(diff_store, f)
     return Image.fromarray(pic)
 
 
@@ -129,16 +134,25 @@ def better_color(color, error, mode=1, debug=False):
         vis.show()
     return result
 
-def brand(image, text):
-    put_word_on_area(image, text, [150, 200, 260, 230])
+def brand(image, bname, sauce_type):
+    if sauce_type == 'must':
+        put_word_on_area(image, bname, [160, 200, 240, 230], text=[15,30])
+    else:
+        put_word_on_area(image, bname, [150, 200, 260, 230])
 
-def flavor(image, text, color):
-    put_word_on_area(image, text, [114, 250, 200, 290], slope=-1, text=[20, 32], color=color)
-    image = sauce(image, color)
+def flavor(image, text, color, sauce_type):
+    if sauce_type == 'must':
+        put_word_on_area(image, text, [120, 253, 195, 285], slope=-1, text=[17, 32], color=color)
+    else:
+        put_word_on_area(image, text, [114, 250, 200, 290], slope=-1, text=[20, 32], color=color)
+    image = sauce(image, color, sauce_type)
     return image
 
-def sauce(image, color):
-    image = replace_color3(image, [245, 186, 126], color, tolerance=42.5)  # this is the most common color
+def sauce(image, color, sauce):
+    if sauce == 'chup':
+        image = replace_color3(image, [245, 186, 126], color, 42.5, 'c')  # this is the most common color
+    elif sauce == 'must':
+        image = replace_color3(image, [221, 202, 117], color, 14.5, 'm')
     return image
 
 def turn_word_to_color(word, cap=True):
@@ -162,9 +176,10 @@ def turn_word_to_color(word, cap=True):
     return better_color(dominant_color, err)#, debug=True)
     
 def generate_tweet(api):
-    with open(get_script_path() + sep + 'words.pickle', 'rb') as f:
-        im = Image.open(get_script_path() + sep + 'images' + sep + 'mayochup_uncompressed.png')
-        words = pickle.load(f)
+    sauce_type = sample(['chup', 'chup', 'chup', 'chup', 'chup', 'chup', 'chup', 'must'], 1)[0]  # becuae the quality of must tweets is lower, they get a 1/8 chance
+    with open(get_script_path() + sep + 'words.json', 'r') as f:
+        im = Image.open(get_script_path() + sep + 'images' + sep + 'mayo{}_uncompressed.png'.format(sauce_type))
+        words = json.load(f)
         flavors = words[0]
         brands = words[1]
 
@@ -179,14 +194,20 @@ def generate_tweet(api):
         else: 
             print(chup, end=' ')
 
-        brand(im, todays_brand)  # puts the "brand" name where it belongs
-        im = flavor(im, todays_flavor, chup)  # recolors the image and puts the "flavor" on the image
+        brand(im, todays_brand, sauce_type)  # puts the "brand" name where it belongs
+        im = flavor(im, todays_flavor, chup, sauce_type)  # recolors the image and puts the "flavor" on the image
         im.save(get_script_path() + sep + 'images' + sep + 'tweetthis.png')  # save the image for tweeting
         
-        return template.format(todays_brand, todays_flavor)
+        try:
+            return template.format(todays_brand.capitalize(), todays_flavor.capitalize(), sauce_type)
+        except:
+            print(template)
+            exit()
 
 
 def bot_loop(api, debug=False):
+    if debug:
+        print('DEBUG MODE')
     tweet_hour = 8
     while True:
         if tweet_hour == datetime.today().hour or debug:
