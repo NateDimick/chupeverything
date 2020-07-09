@@ -13,7 +13,7 @@ Future updates incoming when I feel like it. Ideas include:
 * better color replacement
 * collecting short trends for later use
 * more skeletons
-* mayocue and kranch added to the lineup
+* jesus f. christ Heinz made ketchup ice cream? I need to mock that
 
 This project couldn't be done without:
 
