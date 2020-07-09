@@ -205,10 +205,10 @@ def generate_tweet(api):
             exit()
 
 
-def bot_loop(api, debug=False):
+def bot_loop(api, start_hour=8, debug=False):
     if debug:
         print('DEBUG MODE')
-    tweet_hour = 8
+    tweet_hour = start_hour
     while True:
         if tweet_hour == datetime.today().hour or debug:
             status = generate_tweet(api)
@@ -231,17 +231,22 @@ if __name__ == "__main__":
     # only notify owner that bot is up if it is on a linux machine - (this is a dead giveaway that I'm writing this on windows and running it on a linux based os)
     if system() == 'Linux':
         bot_api.send_direct_message(creds['owner'], 'as of {}:{} chupbot is running on IP {}'.format(datetime.now().hour, datetime.now().minute, socket.gethostbyname(socket.gethostname())))
-
-    try:
-        bot_loop(bot_api) # set debug=True for testing
-    except KeyboardInterrupt:
-        print('exited normally')
-    except Exception as e:
-        # this is where it would DM me 
-        print('an {} occurred'.format(e))
-        traceback.print_exc()
-        if system() == 'Linux':
-            bot_api.send_direct_message(creds['owner'], '{} occured and I shutdown. Please restart me and program better'.format(e))
+    hour = datetime.now().hour
+    while True:
+        try:
+            bot_loop(bot_api, start_hour=hour) # set debug=True for testing
+        except KeyboardInterrupt:
+            print('exited normally')
+        except Exception as e:
+            hour = datetime.now().hour  # push back to tweet again in 1 hour
+            with open(get_script_path() + sep + "err_log.txt", "a") as f:
+                f.write("{}: {}\n".format(datetime.today().isoformat(), e))  # collect errors in a file
+            try:
+                if system() == 'Linux':
+                    bot_api.send_direct_message(creds['owner'], '{} occured and I shutdown. Please restart me and program better'.format(e))  # try to send dm, but might not be possible
+            except:
+                pass
+                
 """
 notes on the color synthesis:
 to mod or to cap? 
