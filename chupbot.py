@@ -1,5 +1,5 @@
 """
-Chupbot phase 1: shitty images and limited repitoire
+Chupbot phase 2: chup looks fine but must looks like shit
 author: Nate Dimick
 """
 import tweepy as tp 
@@ -10,7 +10,7 @@ from colormath.color_diff import delta_e_cie2000
 from colormath.color_objects import LabColor, sRGBColor
 from colormath.color_conversions import convert_color
 from os import sep
-from os.path import dirname, realpath
+from os.path import dirname, realpath, join
 import sys
 from random import sample
 from datetime import datetime, date, time
@@ -22,9 +22,12 @@ import traceback
 def get_script_path():
     return dirname(realpath(sys.argv[0]))
 
+def get_json(filename, mode='r'):
+    return open(join(get_script_path(), "json", filename), mode)
+
 letters = 'abcdefghijklmnopqrstuvwxyz1234567890'
 font = {}
-with open(get_script_path() + sep + 'chars.json', 'r') as f:
+with get_json("chars.json") as f:
     font = json.load(f)
     cmap = {}
     for c, box in zip(letters, font):
@@ -57,7 +60,7 @@ def replace_color3(image, color, replacement, tolerance, mode):
     lcolor = sRGBColor(color[0], color[1], color[2])
     lcolor = convert_color(lcolor, LabColor)
     try:
-        with open(get_script_path() + sep + 'color_diffs.json', 'r') as f:
+        with get_json("color_diffs.json") as f:
             diff_store = json.load(f)
     except:
         diff_store = {}  # store all color differences to that some claculations don't have to repeated. Dynamic programming FTW. TODO: store this to a file to make repeated operations faster. 
@@ -74,7 +77,7 @@ def replace_color3(image, color, replacement, tolerance, mode):
                     err.append(pixel[v] - color[v])           # calculate the error of the to be replaced pixel from the target color
                 bc = better_color(replacement, err, mode=4)   # get the "better color" in what i call value cap mode
                 pic[y, x] = np.array(bc)
-    with open(get_script_path() + sep + 'color_diffs.json', 'w') as f:
+    with get_json("color_diffs.json", mode='w') as f:
         json.dump(diff_store, f)
     return Image.fromarray(pic)
 
@@ -159,7 +162,7 @@ def turn_word_to_color(word, cap=True):
     """
     synthethize a color from a given word, based on synesthesia kinda. start with the color of the first letter, then accumulate error ofver the rest of the word to make the color unique, but not brown. 
     """
-    with open(get_script_path() + sep + 'synesthesia.json', 'r') as f:
+    with get_json("synesthesia.json") as f:
         colors = json.load(f)
     wc = []
     for l in word.lower(): 
@@ -175,9 +178,9 @@ def turn_word_to_color(word, cap=True):
         
     return better_color(dominant_color, err)#, debug=True)
     
-def generate_tweet(api):
+def generate_tweet(api, dm=True):
     sauce_type = sample(['chup', 'chup', 'chup', 'chup', 'chup', 'chup', 'chup', 'must'], 1)[0]  # becuae the quality of must tweets is lower, they get a 1/8 chance
-    with open(get_script_path() + sep + 'words.json', 'r') as f:
+    with get_json("words.json") as f:
         im = Image.open(get_script_path() + sep + 'images' + sep + 'mayo{}_uncompressed.png'.format(sauce_type))
         words = json.load(f)
         flavors = words[0]
@@ -186,10 +189,10 @@ def generate_tweet(api):
         todays_flavor = sample(flavors, 1)[0] 
         todays_brand = sample(brands, 1)[0]
         chup = turn_word_to_color(todays_flavor)
-        with open(get_script_path() + sep + 'skeletons.json', 'r') as f2:  # get one tweet skeleton
+        with get_json("skeletons.json") as f2:  # get one tweet skeleton
             statuses = json.load(f2)
             template = sample(statuses, 1)[0]
-        if system() == 'Linux':
+        if system() == 'Linux' and dm:
             bot_api.send_direct_message(creds['owner'], 'new tweet incoming: {}-{}-{}'.format(todays_brand, todays_flavor, chup))
         else: 
             print(chup, end=' ')
@@ -211,19 +214,22 @@ def bot_loop(api, start_hour=8, debug=False):
     tweet_hour = start_hour
     while True:
         if tweet_hour == datetime.today().hour or debug:
-            status = generate_tweet(api)
+            with get_json("settings.json") as sfile:
+                settings = json.load(sfile)
+            status = generate_tweet(api, dm=settings["new_tweet_dm"])
             if not debug:
-                api.update_with_media(get_script_path() + sep + 'images' + sep + 'tweetthis.png', status)
+                api.update_with_media(join(get_script_path() ,'images' , 'tweetthis.png'), status)
             else:
                 print(status)
-            tweet_hour = (tweet_hour + 7) % 24
+            tweet_hour = (tweet_hour + settings["tweet_interval"]) % 24
+            print(settings)
 
     sleep(240)
 
 
 if __name__ == "__main__":
     # get credentials
-    creds = json.load(open(get_script_path() + sep + 'tokens.json', 'r'))  # NOTE that this file is not included in the repo for security purposes
+    creds = json.load(get_json("tokens.json"))  # NOTE that this file is not included in the repo for security purposes
     auth = tp.OAuthHandler(creds['api_key'], creds['api_secret'])
     auth.set_access_token(creds['access'], creds['access_secret'])
     bot_api = tp.API(auth)
@@ -235,12 +241,13 @@ if __name__ == "__main__":
     try: 
         while True:
             try:
-                bot_loop(bot_api, start_hour=hour) # set debug=True for testing
+                bot_loop(bot_api, start_hour=hour, debug=(system() != 'Linux')) # set debug=True for testing
             except KeyboardInterrupt:
                 print('exited normally')
+                exit()
             except Exception as e:
                 hour = datetime.now().hour  # push back to tweet again in 1 hour
-                with open(get_script_path() + sep + "err_log.txt", "a") as f:
+                with open(join(get_script_path(), "err_log.txt"), "a") as f:
                     f.write("{}: {}\n-------\n".format(datetime.now().isoformat(), e))  # collect errors in a file
                 try:
                     if system() == 'Linux':
