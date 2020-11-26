@@ -246,7 +246,7 @@ if __name__ == "__main__":
                 print('exited normally')
                 exit()
             except Exception as e:
-                hour = datetime.now().hour  # push back to tweet again in 1 hour
+                hour = (datetime.now().hour + 1) % 24  # push back to tweet again in 1 hour
                 with open(join(get_script_path(), "err_log.txt"), "a") as f:
                     f.write("{}: {}\n-------\n".format(datetime.now().isoformat(), e))  # collect errors in a file
                 try:
