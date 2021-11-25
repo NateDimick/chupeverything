@@ -208,25 +208,6 @@ def generate_tweet(api, dm=True):
             exit()
 
 
-def bot_loop(api, start_hour=8, debug=False):
-    if debug:
-        print('DEBUG MODE')
-    tweet_hour = start_hour
-    while True:
-        if tweet_hour == datetime.today().hour or debug:
-            with get_json("settings.json") as sfile:
-                settings = json.load(sfile)
-            status = generate_tweet(api, dm=settings["new_tweet_dm"])
-            if not debug:
-                api.update_with_media(join(get_script_path() ,'images' , 'tweetthis.png'), status)
-            else:
-                print(status)
-            tweet_hour = (tweet_hour + settings["tweet_interval"]) % 24
-            print(settings)
-
-    sleep(240)
-
-
 if __name__ == "__main__":
     # get credentials
     creds = json.load(get_json("tokens.json"))  # NOTE that this file is not included in the repo for security purposes
@@ -234,29 +215,18 @@ if __name__ == "__main__":
     auth.set_access_token(creds['access'], creds['access_secret'])
     bot_api = tp.API(auth)
 
-    # only notify owner that bot is up if it is on a linux machine - (this is a dead giveaway that I'm writing this on windows and running it on a linux based os)
-    if system() == 'Linux':
-        bot_api.send_direct_message(creds['owner'], 'as of {} chupbot is running on local IP {}'.format(datetime.now().time().isoformat(), socket.gethostbyname(socket.gethostname())))
-    hour = datetime.now().hour
     try: 
-        while True:
-            try:
-                bot_loop(bot_api, start_hour=hour, debug=(system() != 'Linux')) # set debug=True for testing
-            except KeyboardInterrupt:
-                print('exited normally')
-                exit()
-            except Exception as e:
-                hour = (datetime.now().hour + 1) % 24  # push back to tweet again in 1 hour
-                with open(join(get_script_path(), "err_log.txt"), "a") as f:
-                    f.write("{}: {}\n-------\n".format(datetime.now().isoformat(), e))  # collect errors in a file
-                try:
-                    if system() == 'Linux':
-                        bot_api.send_direct_message(creds['owner'], '{} occured but I\'m still running. see err_log.txt for details'.format(e))  # try to send dm, but might not be possible
-                except:
-                    pass
+        with get_json("settings.json") as sfile:
+            settings = json.load(sfile)
+        status = generate_tweet(bot_api, dm=settings["new_tweet_dm"])
+        if not settings['debug']:
+            bot_api.update_with_media(join(get_script_path() ,'images' , 'tweetthis.png'), status)
+        else:
+            print(status)
     except Exception as e:
-        if system() == 'Linux':
-            bot_api.send_direct_message(creds['owner'], '{} occured and I shut down. Please restart and program better'.format(e))
+        with open(join(get_script_path(), "err_log.txt"), "a") as f:
+            f.write("{}: {}\n-------\n".format(datetime.now().isoformat(), traceback.format_exc()))  # collect errors in a file
+            bot_api.send_direct_message(creds['owner'], '{} occurred and I didn\'t tweet Please fix and program better'.format(e))
 
                 
 """
