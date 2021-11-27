@@ -23,3 +23,5 @@ This project couldn't be done without:
 * dafont user donshottype (is it dons hot type or don shot type?)
 * COVID-19 and Stay at Home orders from our nation's caring and responsible governors, particularly Chris Sununu
 * Heinz
+
+This is a cron script now. Set `./runbot.sh` to execute in crontab. create and set up venv first.
