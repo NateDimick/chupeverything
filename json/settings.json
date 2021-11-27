@@ -1,5 +1,5 @@
 {
     "tweet_interval": 7,
-    "new_tweet_dm": true,
+    "new_tweet_dm": false,
     "debug": false
 }
